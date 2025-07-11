@@ -406,6 +406,11 @@ function App() {
                 onStatusUpdate={handleStatusUpdate}
                 onDelete={handleDelete}
                 onSendEmail={handleSendEmail}
+                onViewDetails={handleViewDetails}
+                loading={loading}
+              />
+            </>
+          )}
         </div>
       </div>
 
