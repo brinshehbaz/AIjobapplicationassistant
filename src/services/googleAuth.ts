@@ -43,23 +43,6 @@ class GoogleAuthService {
 
   async signIn(): Promise<User> {
     return new Promise((resolve, reject) => {
-      // Check if popup is blocked
-      const testPopup = window.open('', '_blank', 'width=1,height=1');
-      if (!testPopup || testPopup.closed || typeof testPopup.closed === 'undefined') {
-        // Fallback to full-page redirect when popup is blocked
-        const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-          `client_id=${GOOGLE_CONFIG.CLIENT_ID}&` +
-          `redirect_uri=${encodeURIComponent(GOOGLE_CONFIG.REDIRECT_URI)}&` +
-          `response_type=code&` +
-          `scope=${encodeURIComponent(GOOGLE_CONFIG.SCOPES)}&` +
-          `access_type=offline&` +
-          `prompt=consent`;
-        
-        window.location.href = authUrl;
-        return;
-      }
-      testPopup.close();
-
       const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
         `client_id=${GOOGLE_CONFIG.CLIENT_ID}&` +
         `redirect_uri=${encodeURIComponent(GOOGLE_CONFIG.REDIRECT_URI)}&` +
@@ -68,58 +51,72 @@ class GoogleAuthService {
         `access_type=offline&` +
         `prompt=consent`;
 
+      // Try popup first
       const popup = window.open(
         authUrl, 
         'google-auth', 
-        'width=500,height=600,scrollbars=yes,resizable=yes,status=yes,location=yes,toolbar=no,menubar=no'
+        'width=500,height=600,left=' + (window.screen.width / 2 - 250) + ',top=' + (window.screen.height / 2 - 300) + ',scrollbars=yes,resizable=yes'
       );
       
       if (!popup) {
-        // Secondary fallback if popup still fails
+        // Fallback to full-page redirect if popup fails
         window.location.href = authUrl;
         return;
       }
 
-      let authCompleted = false;
+      // Check if popup was blocked (some browsers allow creation but immediately close)
+      setTimeout(() => {
+        if (popup.closed) {
+          // Popup was blocked, redirect instead
+          window.location.href = authUrl;
+          return;
+        }
+      }, 100);
 
+      let authCompleted = false;
+      
       const checkClosed = setInterval(() => {
         if (popup.closed && !authCompleted) {
           clearInterval(checkClosed);
           window.removeEventListener('message', messageHandler);
-          reject(new Error('Authentication window was closed. Please try again and complete the sign-in process.'));
+          reject(new Error('Authentication window was closed'));
         }
       }, 1000);
 
       const messageHandler = async (event: MessageEvent) => {
         if (event.origin !== window.location.origin) return;
         
-        if (event.data.type === 'GOOGLE_AUTH_SUCCESS') {
+        if (event.data.type === 'GOOGLE_AUTH_SUCCESS' && event.data.code) {
           authCompleted = true;
           clearInterval(checkClosed);
           window.removeEventListener('message', messageHandler);
           popup.close();
           
           try {
-            const tokens = await this.exchangeCodeForTokens(event.data.code);
-            this.saveTokensToStorage(tokens);
-            const user = await this.getUserInfo();
+            const user = await this.handleAuthCode(event.data.code);
             resolve(user);
           } catch (error) {
             reject(error);
           }
         }
         
-        if (event.data.type === 'GOOGLE_AUTH_ERROR') {
+        else if (event.data.type === 'GOOGLE_AUTH_ERROR') {
           authCompleted = true;
           clearInterval(checkClosed);
           window.removeEventListener('message', messageHandler);
           popup.close();
-          reject(new Error(event.data.error || 'Authentication failed'));
+          reject(new Error(event.data.error || 'Google authentication failed'));
         }
       };
 
       window.addEventListener('message', messageHandler);
     });
+  }
+
+  private async handleAuthCode(code: string): Promise<User> {
+    const tokens = await this.exchangeCodeForTokens(code);
+    this.saveTokensToStorage(tokens);
+    return await this.getUserInfo();
   }
 
   private async exchangeCodeForTokens(code: string): Promise<GoogleAuthResponse> {
@@ -211,6 +208,12 @@ class GoogleAuthService {
 
   signOut(): void {
     this.clearTokensFromStorage();
+  }
+
+  async handleAuthCode(code: string): Promise<User> {
+    const tokens = await this.exchangeCodeForTokens(code);
+    this.saveTokensToStorage(tokens);
+    return await this.getUserInfo();
   }
 }
 

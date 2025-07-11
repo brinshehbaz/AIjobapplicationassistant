@@ -42,41 +42,17 @@ function App() {
 
   const handleOAuthCallback = async (code: string) => {
     setAuthLoading(true);
+    setAuthError(null);
     try {
       // Clear the URL
       window.history.replaceState({}, document.title, '/');
       
-      // Exchange code for tokens
-      const tokens = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          client_id: '12128787546-72h13fk4lki973f3la4da5nqvvc53lco.apps.googleusercontent.com',
-          code,
-          grant_type: 'authorization_code',
-          redirect_uri: `${window.location.origin}/auth/callback`,
-        }),
-      });
-
-      if (!tokens.ok) {
-        throw new Error('Failed to exchange code for tokens');
-      }
-
-      const tokenData = await tokens.json();
-      
-      // Save tokens and load user data
-      localStorage.setItem('google_access_token', tokenData.access_token);
-      if (tokenData.refresh_token) {
-        localStorage.setItem('google_refresh_token', tokenData.refresh_token);
-      }
-      localStorage.setItem('google_token_expiry', (Date.now() + (tokenData.expires_in * 1000)).toString());
-      
-      const userData = await googleAuthService.getUserInfo();
+      // Use the auth service to handle the code
+      const userData = await googleAuthService.handleAuthCode(code);
       setUser(userData);
     } catch (error) {
       console.error('OAuth callback failed:', error);
+      setAuthError('Authentication failed. Please try again.');
     } finally {
       setAuthLoading(false);
     }
@@ -131,12 +107,12 @@ function App() {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       
       // Set user-friendly error messages
-      if (errorMessage.includes('Popup blocked') || errorMessage.includes('Failed to open authentication window')) {
-        setAuthError('Please allow popups for this site and try signing in again.');
-      } else if (errorMessage.includes('Authentication window was closed')) {
-        setAuthError('Sign-in was cancelled. Please try again and complete the authentication process.');
+      if (errorMessage.includes('Authentication window was closed')) {
+        setAuthError('Sign-in was cancelled. Please try again.');
       } else if (errorMessage.includes('redirect_uri_mismatch')) {
         setAuthError('Configuration error. Please contact support.');
+      } else if (errorMessage.includes('access_denied')) {
+        setAuthError('Access denied. Please grant permission to continue.');
       } else {
         setAuthError(`Sign-in failed: ${errorMessage}`);
       }
@@ -430,11 +406,6 @@ function App() {
                 onStatusUpdate={handleStatusUpdate}
                 onDelete={handleDelete}
                 onSendEmail={handleSendEmail}
-                onViewDetails={handleViewDetails}
-                loading={loading}
-              />
-            </>
-          )}
         </div>
       </div>
 
