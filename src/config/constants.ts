@@ -1,6 +1,6 @@
 export const GOOGLE_CONFIG = {
   CLIENT_ID: '12128787546-72h13fk4lki973f3la4da5nqvvc53lco.apps.googleusercontent.com',
-  REDIRECT_URI: 'https://localhost:5173/auth/callback',
+  REDIRECT_URI: 'http://localhost:5173/auth/callback',
   SCOPES: [
     'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/userinfo.email',
