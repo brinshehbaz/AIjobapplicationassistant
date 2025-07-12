@@ -51,6 +51,16 @@ class GoogleAuthService {
         `access_type=offline&` +
         `prompt=consent`;
 
+      let checkClosedInterval: NodeJS.Timeout;
+      let popupBlockedTimeout: NodeJS.Timeout;
+      let authCompleted = false;
+
+      const cleanup = () => {
+        if (checkClosedInterval) clearInterval(checkClosedInterval);
+        if (popupBlockedTimeout) clearTimeout(popupBlockedTimeout);
+        window.removeEventListener('message', messageHandler);
+      };
+
       // Try popup first
       const popup = window.open(
         authUrl, 
@@ -60,25 +70,24 @@ class GoogleAuthService {
       
       if (!popup) {
         // Fallback to full-page redirect if popup fails
+        cleanup();
         window.location.href = authUrl;
         return;
       }
 
       // Check if popup was blocked (some browsers allow creation but immediately close)
-      setTimeout(() => {
+      popupBlockedTimeout = setTimeout(() => {
         if (popup.closed) {
           // Popup was blocked, redirect instead
+          cleanup();
           window.location.href = authUrl;
           return;
         }
       }, 100);
 
-      let authCompleted = false;
-      
-      const checkClosed = setInterval(() => {
+      checkClosedInterval = setInterval(() => {
         if (popup.closed && !authCompleted) {
-          clearInterval(checkClosed);
-          window.removeEventListener('message', messageHandler);
+          cleanup();
           reject(new Error('Authentication window was closed'));
         }
       }, 1000);
@@ -88,8 +97,7 @@ class GoogleAuthService {
         
         if (event.data.type === 'GOOGLE_AUTH_SUCCESS' && event.data.code) {
           authCompleted = true;
-          clearInterval(checkClosed);
-          window.removeEventListener('message', messageHandler);
+          cleanup();
           popup.close();
           
           try {
@@ -102,8 +110,7 @@ class GoogleAuthService {
         
         else if (event.data.type === 'GOOGLE_AUTH_ERROR') {
           authCompleted = true;
-          clearInterval(checkClosed);
-          window.removeEventListener('message', messageHandler);
+          cleanup();
           popup.close();
           reject(new Error(event.data.error || 'Google authentication failed'));
         }
