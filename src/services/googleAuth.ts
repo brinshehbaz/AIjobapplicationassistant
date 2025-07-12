@@ -55,6 +55,30 @@ class GoogleAuthService {
       let popupBlockedTimeout: NodeJS.Timeout;
       let authCompleted = false;
 
+      const messageHandler = async (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        
+        if (event.data.type === 'GOOGLE_AUTH_SUCCESS' && event.data.code) {
+          authCompleted = true;
+          cleanup();
+          popup.close();
+          
+          try {
+            const user = await this.handleAuthCode(event.data.code);
+            resolve(user);
+          } catch (error) {
+            reject(error);
+          }
+        }
+        
+        else if (event.data.type === 'GOOGLE_AUTH_ERROR') {
+          authCompleted = true;
+          cleanup();
+          popup.close();
+          reject(new Error(event.data.error || 'Google authentication failed'));
+        }
+      };
+
       const cleanup = () => {
         if (checkClosedInterval) clearInterval(checkClosedInterval);
         if (popupBlockedTimeout) clearTimeout(popupBlockedTimeout);
@@ -91,30 +115,6 @@ class GoogleAuthService {
           reject(new Error('Authentication window was closed'));
         }
       }, 1000);
-
-      const messageHandler = async (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-        
-        if (event.data.type === 'GOOGLE_AUTH_SUCCESS' && event.data.code) {
-          authCompleted = true;
-          cleanup();
-          popup.close();
-          
-          try {
-            const user = await this.handleAuthCode(event.data.code);
-            resolve(user);
-          } catch (error) {
-            reject(error);
-          }
-        }
-        
-        else if (event.data.type === 'GOOGLE_AUTH_ERROR') {
-          authCompleted = true;
-          cleanup();
-          popup.close();
-          reject(new Error(event.data.error || 'Google authentication failed'));
-        }
-      };
 
       window.addEventListener('message', messageHandler);
     });
